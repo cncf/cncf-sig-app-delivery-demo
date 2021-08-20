@@ -1,0 +1,11 @@
+# patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podtato-main
+spec:
+  template:
+    spec:
+      containers:
+        - name: podtato-head-main
+          image: ghcr.io/joshgav/podtato-head/podtato-main:v1-latest-dev

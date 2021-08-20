@@ -47,7 +47,7 @@ If using a NodePort-type service, get the address of a node and the service's
 NodePort as follows:
 
 ```
-ADDR=$(kubectl get nodes {NODE_NAME} -o jsonpath={.status.addresses[0].address})
+ADDR=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
 PORT=$(kubectl get services --namespace=podtato-kubectl podtato-main -ojsonpath='{.spec.ports[0].nodePort}')
 ```
 

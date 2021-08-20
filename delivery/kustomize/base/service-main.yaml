@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podtato-main
+  labels:
+    app.kubernetes.io/name: podtato-head
+    app.kubernetes.io/component: main
+    app.kubernetes.io/version: '0.1.0'
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 9000
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: podtato-head
+    app.kubernetes.io/component: main

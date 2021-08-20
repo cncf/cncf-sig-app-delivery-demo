@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podtato-hats
+  labels:
+    app.kubernetes.io/name: podtato-head
+    app.kubernetes.io/component: hats
+    app.kubernetes.io/version: '0.1.0'
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9001
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: podtato-head
+    app.kubernetes.io/component: hats

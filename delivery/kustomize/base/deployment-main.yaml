@@ -1,0 +1,41 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podtato-main
+  labels:
+    app.kubernetes.io/name: podtato-head
+    app.kubernetes.io/component: main
+    app.kubernetes.io/version: '0.1.0'
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: podtato-head
+      app.kubernetes.io/component: main
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: podtato-head
+        app.kubernetes.io/component: main
+    spec:
+      terminationGracePeriodSeconds: 5
+      serviceAccountName: podtato-head
+      containers:
+        - name: podtato-head-main
+          image: ghcr.io/podtato-head/podtato-main:v1-latest-dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          resources: {}
