@@ -202,6 +202,7 @@ jobs:
     name: Deliver with kubectl
     needs: [prepare_ci_run, container_build]
     runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-*' }}
     env:
       VERSION: ${{ needs.prepare_ci_run.outputs.VERSION }}
     steps:
@@ -227,3 +228,24 @@ jobs:
         uses: helm/kind-action@v1.2.0
       - name: Test delivery with helm
         run: ./delivery/chart/test.sh "${{ github.repository_owner }}" "${{ env.VERSION }}"
+
+  test_ketch:
+    name: Deliver with ketch
+    needs: [prepare_ci_run, container_build]
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release-*' }}
+    env:
+      VERSION: ${{ needs.prepare_ci_run.outputs.VERSION }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ env.CONTAINER_REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.2.0
+      - name: Test delivery with ketch
+        run: ./delivery/ketch/test.sh "${{ github.repository_owner }}" "${{ env.VERSION }}"
