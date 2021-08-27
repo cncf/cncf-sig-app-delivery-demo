@@ -64,4 +64,4 @@ find delivery -type f -name "*.yaml" -print0 | xargs -0 sed -i 's/type: LoadBala
 
 ## Contributing
 
-If you are interested in contribution to podtato head please read [contributing.md](contributing.md)
+See [contributing.md](contributing.md).
