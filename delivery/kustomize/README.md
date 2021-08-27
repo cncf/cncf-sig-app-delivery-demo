@@ -1,117 +1,101 @@
-# Kustomize
+# Deliver with Kustomize
 
-https://kubectl.docs.kubernetes.io/guides/introduction/kustomize/
+Here's how to deliver podtato-head using kustomize.
 
-*TL;DR*
+See this guide for info on kustomize: <https://kubectl.docs.kubernetes.io/guides/introduction/kustomize/>.
 
-- Kustomize helps customizing config files in a template free way.
-- Kustomize provides a number of handy methods like generators to make customization easier.
-- Kustomize uses patches to introduce environment specific changes on an already existing standard config file without disturbing it.
+In short, a set of base resources described in YAML manifests is transformed
+("kustomized") in several possible ways before being applied to a cluster. For
+example, common annotations can be added to every resource; and image names and
+tags can be replaced.
 
-## Principles
+## Prerequisites
 
-In some directory containing your YAML resource files (deployments, services, configmaps, etc.), create a `kustomization.yaml` file.
-This file should declare those resources, and any customization to apply to them, e.g. add a common label.
+- Install kustomize ([official docs](https://kubectl.docs.kubernetes.io/installation/kustomize/))
 
-Generate customized YAML with: `kustomize build <kustomization_yaml_file_dir>`
+## Deliver
 
-Then, you can manage "variants" of a configuration (like development, staging and production) using overlays that modify a common base.
+The base resources are described in the directory `delivery/kustomize/base`.
 
-### Base
+Preview rendered templates from this base: `kustomize build ./delivery/kustomize/base`
 
-A base is a kustomization referred to by some other kustomization.
-Any kustomization, including an overlay, can be a base to another kustomization.
+Finally, apply the rendered base: `kustomize build ./delivery/kustomize/base | kubectl apply -f -`.
 
-### Overlays
+Alternatively, you can apply a kustomization with
+`kubectl apply -k ./delivery/kustomize/base`
 
-An overlay is a kustomization that depends on another kustomization.
-The kustomizations an overlay refers to (via file path, URI or other method) are called bases.
-An overlay is unusable without its bases.
-An overlay may act as a base to another overlay.
-Overlays make the most sense when there is more than one, because they create different variants of a common base - e.g. development, QA, staging and production environment variants.
-These variants use the same overall resources, and vary in relatively simple ways, e.g. the number of replicas in a deployment, the CPU to a particular pod, the data source used in a ConfigMap, etc.
+### Deliver an overlay
 
-## In practice
+kustomize "overlays" transform resources from the original base set differently
+than the base. An overlay can point to any other overlay or base as its base.
 
-_NOTE : you have to be into `delivery/kustomize` folder to run the commands below._
+Look in `delivery/kustomize/overlay` for an example of an overlay which
+transforms resource for delivery to a production environment by adding labels
+and modifying image names.
 
-### Display resources from a simple base
+Render the overlay with `kustomize build ./delivery/kustomize/overlay` and apply it with `kustomize build ./delivery/kustomize/overlay | kubectl apply -f -`
 
-Look at the `./base/kustomization.yaml` file : it must have references to the resources to deploy.
-These references can be local files or remote URLs.
+You may use commands like the following to generate a diff from base to overlay and verify it meets expectations:
 
-You can print what resources are resulting from kustomize with :
-
-```
-kustomize build base
-```
-### Deploy variants of the base through overlays
-
-Now let's deploy some variants of the base with different overlays : `dev`, `staging` and `prod`.
-
-#### Dev overlay
-
-Look at `./overlays/dev` to see what are the differences with the base.
-Deploy the `dev` variant (you can remove the `| kubectl apply -f -` to see what is going to be deployed):
-
-```
-kustomize build ./overlays/dev | kubectl apply -f -
+```bash
+kustomize build ./delivery/kustomize/base > rendered_base.yaml
+kustomize build ./delivery/kustomize/overlay > rendered_overlay.yaml
+diff rendered_base.yaml rendered_overlay.yaml
 ```
 
-Check that resources have been created in `dev` namespace with corresponding labels : `kubectl get all -n dev --show-labels`
+## Test
 
-Check the app :
+Check for resources for the base in the current context namespace: `kubectl get pods`.
 
-```
-SVC_IP=$(kubectl -n dev get service helloservice -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-SVC_PORT=$(kubectl -n dev get service helloservice -o jsonpath='{.spec.ports[0].port}')
-xdg-open http://${SVC_IP}:${SVC_PORT}
-```
+Check for resources for the overlay in the `podtato-kustomize-production` namespace: `kubectl get pods --namespace podtato-kustomize-production`.
 
-NOTE : As you can see in the `./overlays/dev/kustomization.yaml` comment, you can also point to a [remote base](https://github.com/kubernetes-sigs/kustomize/blob/master/examples/remoteBuild.md#url-format). It is very useful to deploy your kustomized version of an open-source tool base without having to maintain it yourself !
+### Test the API endpoint
 
-#### Staging overlay
+To connect to the API you'll first need to determine the correct address and
+port.
 
-Look at the `./overlays/staging` overlay to see what are the differences with the base.
-Deploy the `staging` variant (you can remove the `| kubectl apply -f -` to see what is going to be deployed):
+If using a LoadBalancer-type service, get the IP address of the load balancer
+and use port 9000:
 
 ```
-kustomize build ./overlays/staging | kubectl apply -f -
+ADDR=$(kubectl get service podtato-main --namespace podtato-kustomize -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+PORT=9000
 ```
 
-Check that resources have been created in `prod` namespace with corresponding labels : `kubectl get all -n staging --show-labels`
-
-Check the app :
-
-```
-SVC_IP=$(kubectl -n staging get service helloservice -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-SVC_PORT=$(kubectl -n staging get service helloservice -o jsonpath='{.spec.ports[0].port}')
-xdg-open http://${SVC_IP}:${SVC_PORT}
-```
-
-#### Prod overlay
-
-Look at the `./overlays/prod` overlay to see what are the differences with the base.
-Deploy the `prod` variant (you can remove the `| kubectl apply -f -` to see what is going to be deployed):
+If using a NodePort-type service, get the address of a node and the service's
+NodePort as follows:
 
 ```
-kustomize build ./overlays/prod | kubectl apply -f -
+ADDR=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+PORT=$(kubectl get services --namespace=podtato-kustomize podtato-main -ojsonpath='{.spec.ports[0].nodePort}')
 ```
 
-Check that resources have been created in `prod` namespace with corresponding labels : `kubectl get all -n prod --show-labels`
+If using a ClusterIP-type service, run `kubectl port-forward` in the background
+and connect through that:
 
-Check the app :
-
-```
-SVC_IP=$(kubectl -n prod get service helloservice -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-SVC_PORT=$(kubectl -n prod get service helloservice -o jsonpath='{.spec.ports[0].port}')
-xdg-open http://${SVC_IP}:${SVC_PORT}
-```
-
-### Delete
+> NOTE: Find and kill the port-forward process afterwards using `ps` and `kill`.
 
 ```
-kustomize build ./overlays/dev | kubectl delete -f -
-kustomize build ./overlays/staging | kubectl delete -f -
-kustomize build ./overlays/prod | kubectl delete -f -
+kubectl port-forward --namespace podtato-kubectl svc/podtato-main 9000:9000 &
+ADDR=127.0.0.1
+PORT=9000
+```
+
+Now test the API itself with curl and/or a browser:
+
+```
+curl http://${ADDR}:${PORT}/
+xdg-open http://${ADDR}:${PORT}/
+```
+
+## Purge
+
+```
+kustomize build ./delivery/kustomize/base | kubectl delete -f -
+kustomize build ./delivery/kustomize/overlay | kubectl delete -f -
+
+# or
+
+kubectl delete -k ./delivery/kustomize/base
+kubectl delete -k ./delivery/kustomize/overlay
 ```

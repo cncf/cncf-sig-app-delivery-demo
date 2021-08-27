@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+## these resources comprise this kustomization
+resources:
+  - ../base
+  - namespace.yaml
+  - hpa.yaml
+
+## all resources will be deployed in this namespace
+namespace: podtato-kustomize-production
+
+## labels to be applied to all resources
+commonLabels:
+  variant: production
+
+## strategic merge patches to be applied to resources
+# patchesStrategicMerge:
+#  - patch.yaml
+
+## kustomize transformers that operate on resources
+transformers:
+  - labels.yaml
