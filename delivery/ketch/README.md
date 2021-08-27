@@ -1,103 +1,117 @@
-![Ketch](https://i.imgur.com/TVe46Dm.png)
+# Deliver with Ketch
 
-# Ketch
+Ketch is an application delivery framework that facilitates the deployment and
+management of applications on Kubernetes using a simple command line interface.
 
-**[TheKetch.io](https://theketch.io/)**
+- [theketch.io](https://theketch.io/)
+- [github.com/shipa-corp/ketch](https://github.com/shipa-corp/ketch)
 
-Ketch makes it extremely easy to deploy and manage applications on Kubernetes using a simple command-line interface. No Kubernetes object YAML is required!
+## Prerequisites
 
-## Index
+- Install the ketch CLI ([official docs](https://learn.theketch.io/docs/getting-started#installing-ketch))
+- The target Kubernetes cluster must include [cert-manager](https://cert-manager.io/) and an ingress controller (Istio or Traefik)([official docs](https://learn.theketch.io/docs/getting-started#ingress-controller-cluster-issuer-and-cert-manager))
+- Install the ketch controller
 
-* [Setup](#setup)
-* [Managing node pools](#managing-node-pools)
-* [Creating applications](#creating-applications)
-* [Deploying applications](#deploying-applications)
+A script to prepare a fresh, generic cluster with these requirements is provided in [setup-cluster.sh](./setup-cluster.sh).
 
-## Setup
+## Deliver
 
-You can use any Kubernetes cluster to run Ketch. An example of a local cluster using [k3d](https://k3d.io/) is as follows.
+Ketch delivers an app by associating it with a _framework_ and a _buildpack
+builder_. The _framework_ describes the target environment where the app will be
+deployed; the _buildpack builder_ determines how source is built into a runnable
+image.
 
-*NOTE: Please make sure that you cloned this repository and that you are inside the same directory as this README.*
+### Add framework
 
-```bash
-k3d cluster create --config k3d.yaml
+Ketch relies on **frameworks** to define deployment configuration for a set of
+apps. Add a framework with the following command, replacing
+`--ingress-service-endpoint` with the external address of a LoadBalancer if
+available.
+
+```
+ketch framework add framework1 \
+    --namespace podtato-ketch \
+    --app-quota-limit '-1' \
+    --cluster-issuer selfsigned-cluster-issuer \
+    --ingress-class-name istio \
+    --ingress-type istio \
+    --ingress-service-endpoint '192.168.1.201'
 ```
 
-Please go to the [Ketch Releases](https://github.com/shipa-corp/ketch/releases) page to download the CLI for your OS.
+### Deploy app
 
-Ketch assumes that Cert Manager, Ingress, and Ketch controller are installed.
+Ketch can build and deploy an app from source using [cloud-native
+buildpacks](https://buildpacks.io/) or can deploy a pre-built container image.
 
-Install Cert Manager, Istio, Cluster Issuer, and Ketch Controller:
+#### From source
 
-**NOTE: If you do not already have `istioctl`, the binary can be downloaded from the [releases](https://github.com/istio/istio/releases).*
-
-```bash
-kubectl apply \
-    --filename https://github.com/jetstack/cert-manager/releases/download/v1.0.3/cert-manager.yaml \
-    --validate=false
-
-istioctl install --skip-confirmation
-
-kubectl apply --filename cluster-issuer.yaml
-
-kubectl apply --filename https://github.com/shipa-corp/ketch/releases/download/v0.2.1/ketch-controller.yaml
-```
-
-Retrieve the IP of the load balancer that will be used to auto-generate addresses of the applications.
-
-Please execute the command that follows if you are using a **local k3d cluster** (as in the example above).
+- Include a [Procfile](https://devcenter.heroku.com/articles/procfile) in the source directory. It may be empty.
+- Create a secret for the registry where the built image will be pushed to after
+  build and pulled from for deploy ([official
+  docs](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/)).
+  Reference that secret in the `ketch` command as parameter `--registry-secret`.
+- Clone this repo and run the following command, replacing registry-secret and image repo hostname as appropriate:
 
 ```bash
-export INGRESS_IP=127.0.0.1
+ketch app deploy podtato-head ${root_dir}/podtato-services/main \
+    --registry-secret quay \
+    --builder paketobuildpacks/builder:full \
+    --framework framework1 \
+    --image quay.io/joshgav/podtato-main:latest
 ```
 
-Otherwise, if you are using a **remove cluster**, please execute the command that follows.
+#### From image
 
-*NOTE: Some Kubernetes clusters (e.g., AWS EKS) might be providing `hostname` instead of the `ip`. If that's the case, please modify the command that follows accordingly.*
+Deploy an app image without build with the following command:
 
 ```bash
-export INGRESS_IP=$(kubectl --namespace istio-system get service istio-ingressgateway --output jsonpath="{.status.loadBalancer.ingress[0].ip}")
+ketch app deploy podtato-head-image \
+    --image quay.io/joshgav/podtato-main:latest \
+    --framework framework1
 ```
 
-## Managing node pools
+## Test
 
-Ketch implements the concept of pools, which Platform Engineers and DevOps can use to isolate workloads from different teams, resources assigned to applications, and more. You can add multiple pools to the same cluster.
+### Verify delivery
 
-The command that follows creates a Node Pool called `dev`.
-
-```bash
-ketch pool add dev --namespace dev --ingress-service-endpoint $INGRESS_IP --ingress-type istio
-```
-
-## Creating applications
-
-Ketch makes a distinction between creating and deploying applications.
-
-Creation of an application results in a setup of the framework on a specific pool which can be used to deploy your code in.
-
-```bash
-ketch app create podtato --pool dev
-```
-
-## Deploying applications
-
-Ketch can deploy an application through a pre-built container image or directly from code. The example that follows uses the former method.
-
-```bash
-ketch app deploy podtato --image ghcr.io/podtato-head/podtatoserver:v0.1.1
-```
-
-We can list all the applications created through Ketch.
+List all apps, get info or get logs for an app:
 
 ```bash
 ketch app list
+ketch app info podtato-head
+ketch app log podtato-head
 ```
 
-Please open the address available in the output.
+### Test the API endpoint
 
-Additional addresses can be added to the application with the command that follows.
+Browse to the address returned by the previous commands ending in `shipa.cloud` to open your app.
+
+NOTE: The address returned for the app can be directly opened if the istio-ingressgateway service is available via a service of type LoadBalancer. If the ingress gateway is exposed as a NodePort that port will have to be appended to the hostname. Get the port with the following command:
+
+```
+kubectl get services -n istio-system istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}'
+```
+
+Additional acceptable host names can be added to the application with the
+command that follows. You must configure DNS for the new name yourself.
 
 ```bash
-# Replace `[...]` with the address through which you'd like to access the application
-ketch cname add [...] --app podtato
+ketch cname add myapp.example.com --app podtato-head
+```
+
+## Update
+
+Run `ketch app deploy` again. Specify `--steps` and `--step-interval` parameters to deploy gradually (canary style).
+
+## Purge
+
+Run the following commands to remove the app and ketch controller from your cluster.
+
+```
+ketch app remove podtato-head
+ketch app remove podtato-head-image
+ketch framework remove framework1
+
+ketch_version=0.4.0
+kubectl delete -f https://github.com/shipa-corp/ketch/releases/download/v${ketch_version}/ketch-controller.yaml
 ```
